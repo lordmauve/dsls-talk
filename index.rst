@@ -46,7 +46,7 @@ there.
 Why would we want to write a DSL
 --------------------------------
 
-Let's look at a few of the well known DSLs in Python.
+Let's look at a few of the well known DSLs you might have encountered.
 
 SQL:
 
@@ -56,6 +56,15 @@ SQL:
     FROM person p
     WHERE p.age > 20
     ORDER by p.name ASC
+
+CSS:
+
+.. code-block:: css
+
+    header#front h1 {
+        font-size: 2em;
+        color: white;
+    }
 
 Regular expressions with `re`::
 
@@ -107,6 +116,12 @@ These are good examples of the advantages of DSLs. In each of these cases,
 trying to express the same concepts in Python would be verbose and
 repetitive. This leads to being hard to read and a source of potential bugs.
 
+Also notice that some of these DSLs are very much intended for use embedded
+within a Python source file. Others are not. But don't underestimate the value
+of this. Indeed, Python's triple-quoted strings will let you include longer
+sections of DSL code within your programs, therefore behaving like an almost
+native extension of Python syntax.
+
 
 Python Metaprogramming DSLs
 ---------------------------
@@ -148,7 +163,7 @@ But it doesn't have to behave like that at all - it could behave *absolutely
 any way you like*. This is a DSL I once wrote for scraping web pages with
 ``lxml``::
 
-    class ReviewScraper(Scraper):
+    class ScrapedReview(Scraper):
         category = StringFact("h2/span/text()")
         title = StringFact("h2/text()")
         teaser = StringFact("h2/preceding-sibling::h3//text()")
@@ -162,12 +177,50 @@ any way you like*. This is a DSL I once wrote for scraping web pages with
 
 .. code-block:: python
 
-    >>> ReviewScraper(url)
-    {'category': 'Food and drink', 'title': 'Barcelona Tapas', ...}
+    >>> r = ScrapedReview(url)
+    >>> r.category
+    'Food and drink'
+    >>> r.title
+    'Barcelona Tapas'
 
 Metaclasses are clean - there are few drawbacks to using them transparently
 in your code apart from potential developer confusion as to why a class
 behaves as it does.
+
+
+Writing a metaclass
+-------------------
+
+.. code-block:: python
+
+    class Fact:
+        def __init__(self, xpath):
+            self.xpath = xpath
+
+        def query(self, doc):
+            return doc.xpath(self.xpath, current=doc)
+
+    class ScraperMeta(type):
+        def __new__(cls, name, bases, dict):
+            facts = {}
+            newdict = {}
+            for k, v in dict.itemms():
+                which = facts if isinstance(v, Fact) else newdict
+                which[k] = v
+            newdict['_facts'] = facts
+            return type.__new__(cls, name, bases, newdict)
+
+    class Scraper:
+        __metaclass__ = ScraperMeta
+
+        def __init__(self, url):
+            doc = lxml.etree.parse(url)
+            for name, fact in self._facts.items():
+                value = fact.get(doc)
+                cleaner = getattr(self, 'clean_' + name, None)
+                if callable(cleaner):
+                    value = cleaner(value)
+                setattr(self, name, value)
 
 
 Context managers
@@ -180,8 +233,9 @@ I've seen DSLs like this::
             h1('Context Manager DSLs')
             p('The', bold('with statement'), 'can be used to construct a DSL')
 
-I strongly dislike this kind of thing. Feels very hackish, hard to read, and
-actually may include strange implementation bugs.
+I dislike this kind of thing. Feels very hackish, hard to read, and actually
+may include strange implementation bugs (for example, if this was implemented
+using global state it wouldn't work in a threaded context).
 
 
 Operator Overloading
@@ -219,6 +273,8 @@ This is unintuitive and also has bad side-effects:
 
     Where('age') >= (18 & Where('nationality')) <<inlist>> ['British', 'Spanish']
 
+  ...which is almost certainly not what is intended.
+
 * Comparison operators don't work as expected. This typically bites you in
   tests. I've seen a lot of code written as::
 
@@ -232,6 +288,10 @@ This is unintuitive and also has bad side-effects:
   all inputs.
 
 So this kind of DSL introduces really hard to spot bugs.
+
+In general, I wouldn't recommend overloading operators to add radically
+different semantics, and certainly not the ``==`` operator, because that will
+get used all the time in places you don't expect, like ``x in list``.
 
 
 AST-based parsing
@@ -284,23 +344,253 @@ quotes:
 Other Parsers that we have access to
 ------------------------------------
 
-* JSON
-* YAML
-* ``configparser``
+The next class of parsers we have access to are those available in the standard
+library or well-known packages, such as ``json``, ``configparser`` or ``yaml``
+(or even XML. Eek!)
 
-Ansible
--------
+Each of these formats comes with its own set of syntax that is not necessarily
+aligned to your domain.
 
-Ansible uses a YAML syntax combined with Jinja2 templating.
+The ElasticSearch Query DSL, for example, is rather horrific:
+
+.. code-block:: json
+
+    {
+        "query": {
+            "bool": {
+                "must": [{
+                    "match_phrase_prefix": {"title": {"query": query, "analyzer": "prose"}}
+                }],
+                "should": [
+                    {"term": {"_type": {"value": "city", "boost": 1.0}}}
+                ],
+            }
+        },
+        "fields": ["coding", "primary_city", "city_name", "title", "category"],
+        "highlight": {
+            "fields": {
+                "title": {}
+            }
+        }
+    }
+
+In fairness, this is a wire protocol that you might reasonably be expected to
+use a more user friendly binding for. But all the documentation is given in
+this format so unless your ElasticSearch bindings reproduce all of
+ElasticSearch's documentation ported to show examples with their API, you have
+to engage with it to use ElasticSearch.
+
+Ansible uses a combination of YAML and Jinja2:
+
+.. code-block:: yaml
+
+    - user: name={{ item.name }} state=present generate_ssh_key=yes
+      with_items: "{{users}}"
+
+    - authorized_key: "user={{ item.0.name }} key='{{ lookup('file', item.1) }}'"
+      with_subelements:
+         - users
+         - authorized
+
+
+YAML is a complicated language, aiming to be a superset of JSON while being
+somewhat more human readable and editable. But there are ugly pitfalls. Spot
+the bug in this YAML document:
+
+.. code-block:: yaml
+
+    Terminator (series):
+        - The Terminator
+        - Terminator 2: Judgement Day
+        - Terminator 3: Rise of the Machines
+        - Terminator Salvation
+        - Terminator Genisys
+
+Or this one:
+
+.. code-block:: yaml
+
+    canada:
+        MB: Manitoba
+        NS: Nova Scotia
+        ON: Ontario
+        QC: Quebec
+        SK: Saskatchewan
+
 
 Parsing our own DSLs
 --------------------
 
-* Linewise parsing
+Understanding that the existing parsers have limitations, the next place we
+could logically go to is writing our own parsers.
+
+
+How to design a DSL
+-------------------
+
+In my opinion the best way to start designing your own DSL is to sit down with
+a blank page and start expressing the structure you want to work with in a way
+that makes sense to you. Then iterate backwards and forwards on this until you
+have several examples of your new DSL.
+
+Avoid cramming in lots of syntactic sugar too early: you want to minimise the
+complexity of the language.
+
+Make sure you include some facility for comments; indeed, you should liberally
+comment what your examples are intended to do.
+
+Focus on creating a small set of syntax that meets your goals: expressiveness
+and readability. An additional concern is *parseability*: will you struggle to
+write a parser for this language?
+
+Let's now look at some ways of doing this.
+
+Linewise Parsing
+----------------
+
+You can go an extremely long way by parsing linewise - simply reading a line at
+at time and plugging it into a custom finite state machine.
+
+A finite state machine is a system that responds to each input token in a
+different way depending on its current state. Some inputs will trigger a state
+transition.
+
+For example, you might write::
+
+    state = READ_HEADER
+    for line in source.splitlines():
+        line = strip_comments(line)
+        if state is READ_HEADER:
+            if not line:
+                state = READ_BODY
+                continue
+
+            match = re.match(r'^([^:]+):\s*(.*)', line)
+            if match:
+                key, value = match.groups()
+                headers[key] = value
+            else:
+                raise ParseError("Invalid header line %s")
+        elif state is READ_BODY:
+            ...
+
+Or you could use a class-based pattern that offers a bit more structure::
+
+    class MyParser:
+        def process_header(self, line):
+            if not line:
+                self.state = process_body
+                return
+
+         def process_body(self, line):
+            ...
+
+        INITIAL_STATE = process_header
+
+        def parse(self, f):
+            self.state = self.INITIAL_STATE
+            for l in f:
+                self.state(l)
+
+A plain, off-the-shelf finite state machine is powerful enough to parse all
+regular grammars. But by writing it yourself, you can extend it to maintain
+other kinds of state, such as a stack, to take this much further.
+
+It should be noted that linewise parsing doesn't mean that language structures
+can't span multiple lines. It just means that you're not going to consider
+the substructure of the line (except, say, using regular expressions).
+
+This deserves some more consideration. Before we progress, let's look at some
+of the underlying theory of parsers.
+
+The Dragon Book
+---------------
+
+The classic reference on parsers is *Compilers, Principles, Techniques and
+Tools* by Aho, Lam, Sethi and Ullman, ISBN 0321486811, known colloquially as
+"The Dragon Book" due to the dragon on its cover.
+
+It's a very thorough mathematical treatment of the subject of compilers, of
+which parsers form the first section.
+
+For most software engineers though, implementing your own LALR parser from
+scratch is not necessary, because there are plenty of good libraries to do the
+hard parts for you.
+
+
+Lexical Analysis, Syntax Analysis
+---------------------------------
+
+Commonly parsers are split into two phases:
+
+* **Lexical Analysis**, (or **tokenisation**) in which a source stream is split
+  into a sequence of **tokens**, the "words" and "symbols" that make up a
+  program.
+
+* **Syntax Analysis**, in which a sequence of tokens (from the Lexical Analysis
+  phase) is transformed into a structure called an **abstract syntax tree**.
+
+Python's standard library exposes implementations of both of these for the
+Python's language itself. Lexical Analysis is provided by the ``tokenize``
+module. Syntax Analysis is provided by the ``ast`` module.
+
+Let's compare their output on the following expression::
+
+    (x ** y) + 1
+
+
+Lexical Analysis
+----------------
+
+``tokenize`` produces an iterable of tokens that look like this (somewhat
+simplified from the actual output):
+
+.. code-block:: python
+
+    [
+        (tokens.OP, '('),
+        (tokens.NAME, 'x'),
+        (tokens.OP, '**'),
+        (tokens.NAME, 'y'),
+        (tokens.OP, ')'),
+        (tokens.OP, '+'),
+        (tokens.NUMBER, '1'),
+    ]
+
+You can see that it's just a list of the "words" in the program and their
+types.
+
+
+Syntax Analysis
+---------------
+
+``ast`` can calculate a structure from the expression. We can assume it's
+making use of the token stream from ``tokenize`` as its input, behind the
+scenes.
+
+.. code-block:: python
+
+    BinOp(
+        left=BinOp(
+            left=Name(id='x', ctx=Load()),
+            op=Mult(),
+            right=Name(id='x', ctx=Load())
+        ),
+        op=Add(),
+        right=Num(n=1)
+    )
+
+
+
+* Recursive Descent
+
 * Detour into grammars
+  * Regular expressions
+  * LL(1)
 * Parsing with PLY
 * Parsing with PyParsing
-
+* Other cool parser libraries exist, eg. Parsley -
+  http://parsley.readthedocs.org/en/latest/tutorial.html
 
 Working with DSLs
 -----------------
@@ -311,6 +601,15 @@ Working with DSLs
 
 * Convert AST as string
 
+* Clear syntax errors
+  * should include line number
+
+
+* If indended for use within Python, avoid syntax that could cause problems
+  with Python's own string escaping. In particular, try to avoid requiring
+  backslashes in your own DSL, because even with raw strings it is difficult to
+  mentally parse which backslashes are input to Python and which then become
+  input to your DSL's parser.
 
 Pros and cons of DSLs
 ---------------------
@@ -322,3 +621,13 @@ Using any of the DSLs available in Python or in well-known off-the-shelf
 packages doesn't suffer from these drawbacks to the same extent, because you
 can reasonably expect developers to have some experience in these languages,
 as well as investing themselves
+
+Costs of writing a new DSL
+--------------------------
+
+* IDE support
+* Maintenance cost
+* Extensibility
+  * Depending on your domain, you should have a good idea of the directions in
+    which you will need to extend.
+* Documentation tools
