@@ -323,6 +323,9 @@ The code to do this would look a bit like this::
         root = ast.parse(expr, mode='eval')
         sql = SQLTransformer().visit(root)
 
+We'll talk a little more about the ``ast`` module later.
+
+
 Pony ORM
 --------
 
@@ -339,6 +342,11 @@ quotes:
     WHERE "p"."age" > 20
 
     [Person[2], Person[3]]
+
+
+Pony does this by "decompiling" Python bytecode (actually the approaches to do
+this are similar to the other parsing approaches we will talk about, but act on
+Python's binary byte code format rather than text).
 
 
 Other Parsers that we have access to
@@ -447,6 +455,30 @@ Let's now look at some ways of doing this.
 
 Linewise Parsing
 ----------------
+
+The simplest place to start writing a DSL is by processing each line of input
+in turn, maybe matching it with regular expressions. I wrote very useful DSL
+based on this for constructing the tabular datastructures that a lot of our
+code works with, making it possible to replace code like this::
+
+    t = Table([
+        ('int', 'ReviewID'),
+        ('str', 'Ticket')
+    ])
+    t.extend([
+        (1000, 'QRX-1'),
+        (2000, None),
+    ])
+
+with a much more succinct and literate style::
+
+    table_literal("""
+    | (int) ReviewID | Ticket |
+    | 1000           | QRX-1  |
+    | 2000           | None   |
+    """)
+
+This is extremely useful for writing readable tests.
 
 You can go an extremely long way by parsing linewise - simply reading a line at
 at time and plugging it into a custom finite state machine.
@@ -573,14 +605,124 @@ scenes.
     BinOp(
         left=BinOp(
             left=Name(id='x', ctx=Load()),
-            op=Mult(),
-            right=Name(id='x', ctx=Load())
+            op=Pow(),
+            right=Name(id='y', ctx=Load())
         ),
         op=Add(),
         right=Num(n=1)
     )
 
+If you wished to, you could evaluate this by simply walking the syntax tree and
+evaluate this by providing your own implementations of the operators.
 
+
+Returning to linewise parsers
+-----------------------------
+
+So this allows us to come back to our discussion of linewise parsers - we
+simply treat each line as a "token". We can match the line against a regular
+expression to decide on its "type" and other attributes.
+
+This is the approach I took for the DSL in my winning game in October 2014's
+Pyweek, *Legend of Goblit*. This was an "adventure stage play" driven by an
+executable script, in a language inspired by both dramatic scripts and
+reStructuredText.
+
+.. code-block:: restructuredtext
+
+    .. include:: act1defs
+
+    Act 1
+    =====
+
+    [pause]
+    [GOBLIT enters]
+    GOBLIT: Hello?
+    WIZARD TOX: hmm?
+    [pause]
+    GOBLIT: I say, hello? Grand Wizard Tox?
+    [WIZARD TOX turns around]
+    WIZARD TOX: *sigh* Yes?
+    .. choose-all::
+        .. choice:: My name is Goblit.
+            GOBLIT: I'm Goblit.
+            WIZARD TOX: Goblet? That's a strange name.
+
+        .. choice:: About the assistant role?
+            GOBLIT: I was told you need an assistant?
+            WIZARD TOX: A vacancy has become available, yes.
+
+You can see that there are a few basic line forms (token types), but that the
+syntax analysis can produce a tree structure representing possible game
+actions. The game engine allows the player to choose how to traverse this tree
+and progress the plot.
+
+Grammars
+--------
+
+To progress into writing our own parsers, we need to start by thinking about
+how we describe the language we want to work with. We can write down a
+specification for the structure of a language, which is called a **grammar**.
+
+Much of the literature describing grammars will do so with a semi-formal
+language that consists of a list of **productions**. Each production consists
+of an AST node type and a number of token sequences that, if spotted in the
+input, mean that we can construct an AST node with those tokens as children.
+
+The grammar for a simple calculator expression language may look like this:
+
+.. code-block::
+
+    expr -> expr '+' term | expr '-' term | term
+
+    term -> term '*' factor | term '/' factor | factor
+
+    factor -> '\d+' | '(' expr ')'
+
+
+Note that this kind of representation shows us the **associativity** and
+**operator precedence** of the language - two aspects of how the language
+behaves when brackets are omitted. Your language will have to assume some
+structure in the absence of brackets, and it's important to get these right
+so that users of your language aren't confused about what a program means.
+
+Let's look at the expression::
+
+    a + b + c
+
+If the ``+`` operator is **left associative** then this is equivalent to ::
+
+    (a + b) + c
+
+If it is **right associative** then this is equivalent to ::
+
+    a + (b + c)
+
+Python's operators are *all* left-associative. To avoid confusion for users in
+a language that is expected to be used alongside Python, prefer
+left-associativity for your DSL operators.
+
+This was the rationale for why the new ``@`` matrix-multiplication operator in
+Python 3.5 is left associative (see PEP465_).
+
+.. _PEP465: https://www.python.org/dev/peps/pep-0465/
+
+Operator precedence is about which operators are bracketed *first*. Look at
+the expression::
+
+    a + b * c
+
+Standard mathematical rules would bracket this as ::
+
+    a + (b * c)
+
+meaning that ``*`` has higher operator precedence than ``+``. If ``+`` had the
+same precedence as ``*`` then the associativity would take over, and the
+expression would be parsed as::
+
+    (a + b) * c
+
+Again, the Principal of Least Surprise is required here.
 
 * Recursive Descent
 
@@ -589,6 +731,7 @@ scenes.
   * LL(1)
 * Parsing with PLY
 * Parsing with PyParsing
+* Syntax-directed translation?
 * Other cool parser libraries exist, eg. Parsley -
   http://parsley.readthedocs.org/en/latest/tutorial.html
 
@@ -599,17 +742,53 @@ Working with DSLs
   * Syntax highlighting
   * Linting
 
-* Convert AST as string
+* Convert AST to string
 
 * Clear syntax errors
   * should include line number
 
+If indended for use within Python, avoid syntax that could cause problems
+with Python's own string escaping. In particular, try to avoid requiring
+backslashes in your own DSL, because even with raw strings it is difficult to
+mentally parse which backslashes are input to Python and which then become
+input to your DSL's parser.
 
-* If indended for use within Python, avoid syntax that could cause problems
-  with Python's own string escaping. In particular, try to avoid requiring
-  backslashes in your own DSL, because even with raw strings it is difficult to
-  mentally parse which backslashes are input to Python and which then become
-  input to your DSL's parser.
+
+Syntax highlighting
+-------------------
+
+An editor's syntax hilighting system wil typically be very similar to the
+code for a tokenizer - but that may have to be ported into a language the
+editor can understand.
+
+This is an example of writing a syntax highlighter for vim:
+
+.. code-block:: vim-script
+
+    syn keyword Keyword       class define node
+    syn keyword Keyword       use metric
+    syn keyword Keyword       alert
+    syn keyword Label         as format at severity if for value inherits using
+
+    syn match cmpOp '>\|<\|==\|!='
+    syn match String '"[^"]*"' contains=Variable,QVariable
+    syn match Number '[0-9]\+'
+    syn match Number '[0-9]\+[hms]'
+
+    syn match Comment       "\s*#.*$"
+
+    syn match Identifier '[A-Za-z][A-Za-za-z.-]*'
+
+    syn match Variable  "\$\w\+"
+    syn match QVariable  "\${\w\+}" contained
+
+    hi link Variable Include
+    hi link Label   Type
+    hi link cmpOp SpecialChar
+    hi link QVariable Variable
+
+    let b:current_syntax = "rule"
+
 
 Pros and cons of DSLs
 ---------------------
