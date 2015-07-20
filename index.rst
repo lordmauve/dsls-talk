@@ -163,7 +163,7 @@ Metaclasses
 .. code-block:: python
 
     >>> ScrapedReview(url)
-    {'category': 'Food and drink', 'title': 'Barcelona Tapas', ...}
+    {'category': 'Food and drink', 'title': 'Bilbao Tapas', ...}
 
 
 Writing a metaclass
@@ -176,15 +176,16 @@ Writing a metaclass
         def get(self, doc):
             return doc.xpath(self.xpath, current=doc)
 
+Writing a metaclass
+-------------------
+
+.. code-block:: python
+
     class ScraperMeta(type):
         def __new__(cls, name, bases, dict):
-            facts = {}
-            newdict = {}
-            for k, v in dict.items():
-                which = facts if isinstance(v, Fact) else newdict
-                which[k] = v
-            newdict['_facts'] = facts
-            return type.__new__(cls, name, bases, newdict)
+            """Collect facts from class dict"""
+            dict['_facts'] = {k: v for k, v in dict if isinstance(v, Fact)}
+            return type.__new__(cls, name, bases, dict)
 
         def __call__(cls, url):
             doc = lxml.etree.parse(url)
@@ -197,6 +198,11 @@ Writing a metaclass
                 d[name] = v
             return d
 
+Writing a metaclass
+-------------------
+
+.. code-block:: python
+
     class Scraper(metaclass=ScraperMeta):
         pass
 
@@ -204,7 +210,7 @@ Writing a metaclass
 Context managers
 ----------------
 
-I've seen DSLs like this::
+.. code-block:: python
 
     with html():
         with body():
@@ -217,7 +223,8 @@ Operator Overloading
 
 Spotted in a real codebase::
 
-    >>> w = (Where('age') >= 18) & (Where('nationality') <<inlist>> ['British', 'Spanish'])
+    >>> w = (Where('age') >= 18) & \
+    ...     (Where('nationality') <<inlist>> ['British', 'Spanish'])
     >>> w.sql()
     "`age` >= 18 AND `nationality` IN ('British', 'Spanish')"
 
@@ -454,6 +461,16 @@ After::
     """)
 
 
+Linewise Parsing
+----------------
+
+* Number of parser states
+* Start in initial state
+* For each line of input, switch on state
+
+  * Maybe output/store some value
+  * Maybe transition to another state
+
 Finite State Machine
 --------------------
 
@@ -528,12 +545,11 @@ Lexical Analysis, Syntax Analysis
 
 Commonly parsers are split into two phases:
 
-* **Lexical Analysis**, (or **tokenisation**) in which a source stream is split
-  into a sequence of **tokens**, the "words" and "symbols" that make up a
-  program.
+* **Lexical Analysis**, (or **tokenisation**) - source is split into a sequence
+  of **tokens**
 
-* **Syntax Analysis**, in which a sequence of tokens (from the Lexical Analysis
-  phase) is transformed into a structure called an **abstract syntax tree**.
+* **Syntax Analysis** - the sequence of tokens is transformed into a structure
+  called an **abstract syntax tree**.
 
 
 Lexical Analysis
@@ -582,6 +598,12 @@ Syntax Analysis
 
 Returning to linewise parsers
 -----------------------------
+
+* Each line is a token
+
+
+Interlude: Pyweek
+-----------------
 
 .. image:: images/goblit.png
     :align: center
@@ -713,6 +735,12 @@ PLY: Parser
         left, op, right = t[1:]
         t[0] = OPERATORS[op](left, right)
 
+
+PLY: Parser
+-----------
+
+.. code-block:: python
+
     def p_expression_group(t):
         'expression : LPAREN expression RPAREN'
         t[0] = t[2]
@@ -757,10 +785,20 @@ PyParsing
 
     CONSTANT = STRING_CONSTANT | FLOAT_CONSTANT | INT_CONSTANT
 
+PyParsing
+---------
+
+.. code-block:: python
+
     VALUE = Forward()
     LIST = (Literal('(') + Optional(VALUE + ZeroOrMore(COMMA + VALUE) +
             Optional(COMMA)) + Literal(')'))
     VALUE <<= CONSTANT | LIST
+
+PyParsing
+---------
+
+.. code-block:: python
 
     CONSTANT.setParseAction(lambda toks: ast.literal_eval(toks[0]))
     LIST.setParseAction(lambda toks: [toks[1:-1:2]])
@@ -900,6 +938,7 @@ Advantages:
 * More readable code
 * More developer productivity
 * Fewer bugs - if done well!
+* Security - not using eval(), XML exploits etc
 
 Disadvantages:
 
