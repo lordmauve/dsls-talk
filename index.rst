@@ -15,20 +15,6 @@ What is a Domain Specific Language
 * We want to use Python for our general purpose stuff
 
 
-What we need to build a DSL
----------------------------
-
-* A way of constructing structure in Python
-
-  * Using Python's own structural forms
-  * Using existing parsers
-  * Writing our own parsers
-
-* The Python code to evaluate that structure
-
-A language structure is called an **abstract syntax tree** (AST).
-
-
 SQL
 ---
 
@@ -110,9 +96,11 @@ reStructuredText
 Why DSLs?
 ---------
 
-* Expressive
-* Readable
+.. rst-class:: build
+
+* Improve readability
 * Reduce repetition
+* Manipulate input (eg. validate, transform, sanitise)
 
 
 What might want from DSLs in Python
@@ -122,6 +110,17 @@ What might want from DSLs in Python
 * Use Python where Python is good
 * Mix Python and DSL code - eg in triple-quoted strings
 * Preserve the readability of python
+
+
+What we need to build a DSL
+---------------------------
+
+* A way of constructing structure in Python
+* The Python code to evaluate that structure
+
+A language structure is called an **abstract syntax tree** (AST).
+
+This talk will look at how to construct those structures.
 
 
 Python Metaprogramming DSLs
@@ -250,21 +249,24 @@ Using operator overloading like this::
 
     inlist = Infix('in')
 
-Disadvantages
--------------
+Not all operators can be overloaded!
+------------------------------------
 
 * ``and`` and ``or`` can not be overloaded in Python.
 * The DSL uses ``&`` and ``|`` instead.
 * These have the wrong **operator precedence**.
 * Comparison operators don't work as expected.
 
-So this::
+Precedence Fail!
+----------------
+
+This::
 
     Where('age') >= 18 & Where('nationality') <<inlist>> ['British', 'Spanish']
 
 will actually be executed as::
 
-    Where('age') >= (18 & Where('nationality')) <<inlist>> ['British', 'Spanish']
+    Where('age') >= ((18 & Where('nationality')) <<inlist>> ['British', 'Spanish'])
 
 ...which is almost certainly not what is intended.
 
@@ -276,18 +278,14 @@ Use Python's own parser, the ``ast`` module::
 
     Person.select("age > 20 and nationality in ['British', 'Spanish']")
 
-Maybe like this::
-
-    import ast
+.. code-block:: python
 
     class SQLTransformer(ast.NodeVisitor):
         def visit_boolop(self, node):
             if node.op == ast.And:
                 op = ' AND '
-            elif node.op == ast.Or:
-                op = ' OR '
             else:
-                raise ValueError("Unknown boolean operation %s" % node.op)
+                ...
             return op.join(self.visit(e) for e in node.values)
 
         ...
@@ -295,8 +293,6 @@ Maybe like this::
     def select(expr):
         root = ast.parse(expr, mode='eval')
         sql = SQLTransformer().visit(root)
-
-We'll talk a little more about the ``ast`` module later.
 
 
 Implicit AST Manipulation
@@ -308,10 +304,11 @@ Spotted in the wild::
     def PageTitle(self):
         return self.Name or self.Doc.Name
 
+(Rewrites evaluation order, apply memoisation with invalidation, provides
+data binding for MVVM).
+
 * ``inspect.getsource()`` to find the source
 * ``ast`` to parse, rewrite, and recompile it
-
-Very difficult for developers to understand what is going on.
 
 
 Pony ORM
@@ -330,7 +327,17 @@ Pony ORM
 
 * Decompile bytecode back to AST-like structure
 * Decompilation is a special case of compilation :)
-* Python bytecode is a DSL!
+
+
+Python Metaprogramming Tricks
+-----------------------------
+
+* Developer surprise
+* Often no clear distinction between code that will execute with Python
+  semantics and code that won't
+* Some Python constructs end up supported
+* Hard to extend
+* Metaclasses seem like the cleanest approach
 
 
 Other off-the-shelf parsers
@@ -409,6 +416,14 @@ Is YAML really human-readable?
         ON: Ontario
         QC: Quebec
         SK: Saskatchewan
+
+
+Off-the-shelf parsers
+---------------------
+
+* Verbose
+* Hard to extend
+* May not be that readable
 
 
 Parsing our own DSLs
@@ -528,13 +543,11 @@ Finite state machine
 Parsing Theory
 ==============
 
-The Dragon Book
----------------
+You (probably) don't need to read this book!
+--------------------------------------------
 
 *Compilers, Principles, Techniques and Tools* by Aho, Lam, Sethi and Ullman,
 ISBN 0321486811
-
-**You (probably) don't need to read this book!**
 
 .. image:: images/dragon-book.jpg
     :align: center
