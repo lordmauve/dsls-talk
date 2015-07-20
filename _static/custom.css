@@ -1,0 +1,106 @@
+.slides {
+    font-size: 26px;
+}
+
+article h2 {
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, .2);
+}
+
+.slides > article {
+    text-shadow: none;
+}
+
+ul {
+    margin-top: 1.5em;
+}
+
+pre {
+    margin: 1.5em 0;
+    box-shadow: none;
+    text-shadow: none;
+    border-radius: 0.5em;
+    font-family: "Ubuntu Mono";
+    font-weight: normal;
+    font-size: 0.8em;
+}
+
+code {
+    font-family: "Ubuntu Mono";
+    color: black;
+    padding: 0.1em 0.3em;
+    margin: 0 0.1em;
+    border: solid #e0e0e0 1px;
+    border-radius: 0.2em;
+    background-color: #f0f0f0;
+}
+
+p {
+    margin: 1em 0;
+}
+
+.slide.level-1 {
+    background: url('full_bg.png') purple no-repeat bottom left;
+    background-size: cover;
+}
+
+.slide.level-1 > * {
+    color: white;
+}
+
+.slide.level-2 {
+    background: url('bottom_strip.png') white no-repeat bottom center;
+    background-size: contain;
+}
+
+h1, h2, h3, h4 {
+    font-family: Trebuchet MS, Arial, sans-serif;
+    font-weight: normal;
+    color: black;
+}
+
+.slides > article {
+    font-family: Calibri, Arial, sans-serif;
+    color: #222;
+}
+
+.slides.table p,
+.slides.table pre {
+    margin: 0.6em 0;
+}
+
+.slides.table pre {
+    font-size: 0.7em;
+}
+
+.slides.table > article:hover {
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    transform: scale(1.02);
+    transition: transform 0.1s;
+}
+
+ul {
+    list-style: disc;
+}
+
+ul li::before {
+    content: "";
+    display: none;
+}
+
+.slide-no {
+    color: white;
+    font-family: Connections, sans-serif;
+    right: 1em;
+    bottom: 0.7em;
+    line-height: 1em;
+}
+
+.highlight {
+    background-color: transparent !important;
+}
+
+article img {
+    display: block;
+    margin: 1em auto;
+    max-height: 85%;
+}
