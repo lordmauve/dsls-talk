@@ -3,6 +3,9 @@ Writing Domain Specific Languages in Python
 
 The Unabridged Guide
 
+Daniel Pope / @lordmauve
+
+
 Introduction
 ============
 
@@ -98,7 +101,7 @@ Why DSLs?
 .. rst-class:: build
 
 * Improve readability
-* Reduce repetition
+* Reduce repetition (and improve writability)
 * Manipulate input (eg. validate, transform, sanitise)
 * For editing by non-technical/non-Python people
 
@@ -262,13 +265,6 @@ Using operator overloading like this::
 
     inlist = Infix('in')
 
-Not all operators can be overloaded!
-------------------------------------
-
-* ``and`` and ``or`` can not be overloaded in Python.
-* The DSL uses ``&`` and ``|`` instead.
-* These have the wrong **operator precedence**.
-* Comparison operators don't work as expected.
 
 Precedence Fail!
 ----------------
@@ -282,6 +278,31 @@ will actually be executed as::
     Where('age') >= ((18 & Where('nationality')) <<inlist>> ['British', 'Spanish'])
 
 ...which is almost certainly not what is intended.
+
+
+Semantics Fail!
+---------------
+
+.. code-block:: python
+
+    >>> table.age
+    <Table object at 0x7f03cd8a3630>
+    >>> table.age == None
+    [False, False, False, True, False]
+    >>> table[table.age == None]
+    ...
+
+.. code-block:: python
+
+    >>> table == None
+    [False, False, False, False, False]
+
+.. code-block:: python
+
+    self.assertEqual(
+        table,
+        None
+    )
 
 
 AST-based parsing
@@ -317,8 +338,8 @@ Spotted in the wild::
     def PageTitle(self):
         return self.Name or self.Doc.Name
 
-(Rewrites evaluation order, apply memoisation with invalidation, provides
-data binding for MVVM).
+Similar but subtly different semantics (eg. exceptions do not work, ``or`` is
+not lazy-evaluating).
 
 * ``inspect.getsource()`` to find the source
 * ``ast`` to parse, rewrite, and recompile it
@@ -348,8 +369,8 @@ Python Metaprogramming Tricks
 * Developer surprise
 * Often no clear distinction between code that will execute with Python
   semantics and code that won't
-* Some Python constructs end up supported
-* Hard to extend
+* Some Python constructs end up unsupported
+* Hard to extend in arbitrary ways
 * Metaclasses seem like the cleanest approach
 
 
@@ -368,16 +389,18 @@ Each of these formats comes with its own set of syntax that is not necessarily
 aligned to your domain.
 
 
-Example: ElasticSearch DSL
---------------------------
+ElasticSearch DSL
+-----------------
 
-.. code-block:: json
+.. code-block:: javascript
 
     {
         "query": {
             "bool": {
                 "must": [{
-                    "match_phrase_prefix": {"title": {"query": query, "analyzer": "prose"}}
+                    "match_phrase_prefix": {
+                        "title": {"query": query, "analyzer": "prose"}
+                    }
                 }],
                 "should": [
                     {"term": {"_type": {"value": "city", "boost": 1.0}}}
@@ -386,17 +409,13 @@ Example: ElasticSearch DSL
         },
         "fields": ["coding", "primary_city", "city_name", "title", "category"],
         "highlight": {
-            "fields": {
-                "title": {}
-            }
+            "fields": {"title": {}}
         }
     }
 
 
-Example: Ansible Playbook
--------------------------
-
-Ansible uses a combination of YAML and Jinja2:
+Ansible Playbook
+----------------
 
 .. code-block:: yaml
 
@@ -409,26 +428,28 @@ Ansible uses a combination of YAML and Jinja2:
          - authorized
 
 
-Is YAML really human-readable?
-------------------------------
+Aside: Is YAML really human-readable?
+-------------------------------------
 
-.. code-block:: yaml
+.. rst-class:: build
 
-    Terminator (series):
-        - The Terminator
-        - Terminator 2: Judgement Day
-        - Terminator 3: Rise of the Machines
-        - Terminator Salvation
-        - Terminator Genisys
+    .. code-block:: yaml
 
-.. code-block:: yaml
+        Terminator (series):
+            - The Terminator
+            - Terminator 2: Judgement Day
+            - Terminator 3: Rise of the Machines
+            - Terminator Salvation
+            - Terminator Genisys
 
-    canada:
-        MB: Manitoba
-        NS: Nova Scotia
-        ON: Ontario
-        QC: Quebec
-        SK: Saskatchewan
+    .. code-block:: yaml
+
+        canada:
+            MB: Manitoba
+            NS: Nova Scotia
+            ON: Ontario
+            QC: Quebec
+            SK: Saskatchewan
 
 
 Off-the-shelf parsers
@@ -449,8 +470,10 @@ How to design a DSL
 2. Express your ideas in the simplest way you can
 3. Iterate. Or throw away and start again.
 4. Produce a variety of examples.
+5. Split your examples into test cases.
 
 Design first, write a parser later.
+
 
 Considerations when designing a DSL
 -----------------------------------
@@ -498,6 +521,13 @@ Linewise Parsing
 
   * Maybe output/store some value
   * Maybe transition to another state
+
+
+Finite State Machine
+--------------------
+
+.. image:: images/fsm.png
+
 
 Finite State Machine
 --------------------
@@ -888,8 +918,7 @@ Metric definition language
 
 .. code-block:: text
 
-    # Base class for all hosts
-    # Monitors memory and load
+    # Base class for all hosts; Monitors memory and load
     class aws-host extends base {
         metric "cpu.load.5min" {
             alert at severity 2 if value > 150 for 5m;
@@ -934,29 +963,21 @@ Now you know how to write a tokenizer, this should be easy...!
 
 .. code-block:: vim
 
-    syn keyword Keyword       class define node
-    syn keyword Keyword       use metric
-    syn keyword Keyword       alert
+    syn keyword Keyword       class define node use metric alert
     syn keyword Label         as format at severity if for value inherits using
-
     syn match cmpOp '>\|<\|==\|!='
     syn match String '"[^"]*"' contains=Variable,QVariable
-    syn match Number '[0-9]\+'
-    syn match Number '[0-9]\+[hms]'
-
-    syn match Comment       "\s*#.*$"
-
+    syn match Number '[0-9]\+[hms]\?'
+    syn match Comment  "\s*#.*$"
     syn match Identifier '[A-Za-z][A-Za-za-z.-]*'
-
-    syn match Variable  "\$\w\+"
-    syn match QVariable  "\${\w\+}" contained
-
+    syn match Variable "\$\w\+"
+    syn match QVariable "\${\w\+}" contained
     hi link Variable Include
-    hi link Label   Type
+    hi link Label Type
     hi link cmpOp SpecialChar
     hi link QVariable Variable
 
-    let b:current_syntax = "rule"
+    let b:current_syntax = "metricrules"
 
 
 Pros and cons of DSLs
@@ -973,3 +994,8 @@ Disadvantages:
 
 * Learning curve for newbies
 * No tooling support (IDEs, linters, documentation tools)
+
+Thank you
+=========
+
+Daniel Pope / @lordmauve / http://bitbucket.org/lordmauve
