@@ -47,19 +47,29 @@ p {
     color: white;
 }
 
-.slide.level-2 {
-    background: url('bottom_strip.png') white no-repeat bottom center;
+.slide.level-2,
+.slide.level-3 {
+    background: url('bottom_bg.png') white no-repeat bottom center;
     background-size: contain;
 }
 
 h1, h2, h3, h4 {
-    font-family: Trebuchet MS, Arial, sans-serif;
+    font-family: Laksaman, sans-serif;
     font-weight: normal;
-    color: black;
+}
+
+h2 {
+    font-size: 175%;
+    margin-top: 10em;
+}
+
+h3 {
+    font-size: 140%;
 }
 
 .slides > article {
-    font-family: Calibri, Arial, sans-serif;
+    font-family: Arial, sans-serif;
+    font-weight: thin;
     color: #222;
 }
 
