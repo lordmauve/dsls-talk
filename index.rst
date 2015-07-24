@@ -1,5 +1,7 @@
-The unabridged guide to Domain Specific Languages in Python
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Writing Domain Specific Languages in Python
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The Unabridged Guide
 
 Introduction
 ============
@@ -10,9 +12,6 @@ What is a Domain Specific Language
 * A **domain** means a problem space.
 * A **Domain Specific Language (DSL)** is a language designed to better solve
   problems in that space.
-* Python is a general purpose language, good for many problem spaces.
-* May be Turing-complete, or not
-* We want to use Python for our general purpose stuff
 
 
 SQL
@@ -101,6 +100,7 @@ Why DSLs?
 * Improve readability
 * Reduce repetition
 * Manipulate input (eg. validate, transform, sanitise)
+* For editing by non-technical/non-Python people
 
 
 What might want from DSLs in Python
@@ -118,9 +118,11 @@ What we need to build a DSL
 * A way of constructing structure in Python
 * The Python code to evaluate that structure
 
-A language structure is called an **abstract syntax tree** (AST).
 
-This talk will look at how to construct those structures.
+Abstract Syntax Tree
+--------------------
+
+.. image:: images/parsing.png
 
 
 Python Metaprogramming DSLs
@@ -215,6 +217,17 @@ Context managers
         with body():
             h1('Context Manager DSLs')
             p('The', bold('with statement'), 'can be used to construct a DSL')
+
+
+Operator Overloading
+--------------------
+
+.. code-block:: python
+
+    BlogPost.objects.filter(
+        Q(author__name__icontains='daniel') |
+        Q(published__lte=datetime.datetime.now())
+    )
 
 
 Operator Overloading
@@ -782,8 +795,8 @@ PLY: Usage
     0.4
 
 
-PyParsing
----------
+PyParsing: token matchers
+-------------------------
 
 .. code-block:: python
 
@@ -796,20 +809,22 @@ PyParsing
     FLOAT_CONSTANT = Regex(r'-?\d*\.\d+')
     COMMA = Literal(',')
 
-    CONSTANT = STRING_CONSTANT | FLOAT_CONSTANT | INT_CONSTANT
 
-PyParsing
----------
+PyParsing: Combinations
+-----------------------
 
 .. code-block:: python
+
+    CONSTANT = STRING_CONSTANT | FLOAT_CONSTANT | INT_CONSTANT
 
     VALUE = Forward()
     LIST = (Literal('(') + Optional(VALUE + ZeroOrMore(COMMA + VALUE) +
             Optional(COMMA)) + Literal(')'))
     VALUE <<= CONSTANT | LIST
 
-PyParsing
----------
+
+PyParsing: Parse Actions
+------------------------
 
 .. code-block:: python
 
@@ -849,6 +864,7 @@ Parsley
 
     >>> parser('4 + 3 - 1').expr()
     6
+
 
 "WHERE" expressions revisited
 -----------------------------
